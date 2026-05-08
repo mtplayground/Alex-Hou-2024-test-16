@@ -1,15 +1,16 @@
 #[cfg(feature = "ssr")]
+use crate::domain::todo::Todo;
+
+#[cfg(feature = "ssr")]
 use sqlx::{Executor, FromRow, Sqlite, SqlitePool};
 
 #[cfg(feature = "ssr")]
 #[derive(Clone, Debug, Eq, FromRow, PartialEq)]
-pub struct TodoRecord {
-    pub id: i64,
-    pub title: String,
-    pub completed: bool,
-    pub position: i64,
-    pub created_at: String,
-    pub updated_at: String,
+pub(crate) struct TodoRow {
+    pub(crate) id: i64,
+    pub(crate) title: String,
+    pub(crate) completed: bool,
+    pub(crate) position: i64,
 }
 
 #[cfg(feature = "ssr")]
@@ -44,21 +45,22 @@ impl From<sqlx::Error> for TodoStoreError {
 }
 
 #[cfg(feature = "ssr")]
-pub async fn list_todos(pool: &SqlitePool) -> Result<Vec<TodoRecord>, TodoStoreError> {
-    sqlx::query_as::<_, TodoRecord>(
+pub async fn list_todos(pool: &SqlitePool) -> Result<Vec<Todo>, TodoStoreError> {
+    sqlx::query_as::<_, TodoRow>(
         r#"
-        SELECT id, title, completed, position, created_at, updated_at
+        SELECT id, title, completed, position
         FROM todos
         ORDER BY position ASC, id ASC
         "#,
     )
     .fetch_all(pool)
     .await
+    .map(|rows| rows.into_iter().map(Todo::from).collect())
     .map_err(TodoStoreError::from)
 }
 
 #[cfg(feature = "ssr")]
-pub async fn create_todo(pool: &SqlitePool, title: &str) -> Result<TodoRecord, TodoStoreError> {
+pub async fn create_todo(pool: &SqlitePool, title: &str) -> Result<Todo, TodoStoreError> {
     let title = normalize_title(title)?;
     let mut tx = pool.begin().await?;
 
@@ -85,7 +87,7 @@ pub async fn update_todo(
     id: i64,
     title: Option<&str>,
     completed: Option<bool>,
-) -> Result<TodoRecord, TodoStoreError> {
+) -> Result<Todo, TodoStoreError> {
     if title.is_none() && completed.is_none() {
         return Err(TodoStoreError::InvalidUpdate);
     }
@@ -169,13 +171,13 @@ fn normalize_title(title: &str) -> Result<String, TodoStoreError> {
 }
 
 #[cfg(feature = "ssr")]
-async fn fetch_todo_by_id<'e, E>(executor: E, id: i64) -> Result<TodoRecord, TodoStoreError>
+async fn fetch_todo_by_id<'e, E>(executor: E, id: i64) -> Result<Todo, TodoStoreError>
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    sqlx::query_as::<_, TodoRecord>(
+    sqlx::query_as::<_, TodoRow>(
         r#"
-        SELECT id, title, completed, position, created_at, updated_at
+        SELECT id, title, completed, position
         FROM todos
         WHERE id = ?1
         "#,
@@ -183,6 +185,7 @@ where
     .bind(id)
     .fetch_optional(executor)
     .await?
+    .map(Todo::from)
     .ok_or(TodoStoreError::NotFound(id))
 }
 
