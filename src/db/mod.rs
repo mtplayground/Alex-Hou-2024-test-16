@@ -18,3 +18,8 @@ pub async fn init_sqlite_pool(database_url: &str) -> Result<SqlitePool, sqlx::Er
         .connect_with(connect_options)
         .await
 }
+
+#[cfg(feature = "ssr")]
+pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::migrate::MigrateError> {
+    sqlx::migrate!().run(pool).await
+}
