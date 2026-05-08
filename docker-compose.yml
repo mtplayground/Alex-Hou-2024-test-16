@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: alex-hou-2024-test-16:local
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: sqlite:///app/data/todos.db
+      LEPTOS_OUTPUT_NAME: alex-hou-2024-test-16
+      LEPTOS_SITE_ADDR: 0.0.0.0:8080
+      LEPTOS_SITE_ROOT: /app/site
+    volumes:
+      - sqlite_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:
