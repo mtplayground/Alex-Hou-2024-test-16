@@ -3,7 +3,7 @@ FROM rust:1-bookworm AS builder
 ARG CARGO_LEPTOS_VERSION=0.3.6
 
 RUN apt-get update -y \
-    && apt-get install -y --no-install-recommends ca-certificates clang curl \
+    && apt-get install -y --no-install-recommends ca-certificates clang curl libsqlite3-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl --proto '=https' --tlsv1.2 -LsSf \
@@ -23,7 +23,7 @@ FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 
 RUN apt-get update -y \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/alex-hou-2024-test-16 /app/alex-hou-2024-test-16

@@ -2,6 +2,7 @@
 use alex_hou_2024_test_16::{
     app::{shell, App},
     config::{AppEnv, ConfigError},
+    db::init_sqlite_pool,
 };
 
 #[cfg(feature = "ssr")]
@@ -14,6 +15,7 @@ async fn main() -> Result<(), ServerStartError> {
     let config = AppEnv::load()?;
     let leptos_options = config.leptos_options();
     let addr = leptos_options.site_addr;
+    let _pool = init_sqlite_pool(&config.database_url).await?;
     let routes = generate_route_list(App);
 
     let app = Router::new()
@@ -24,6 +26,7 @@ async fn main() -> Result<(), ServerStartError> {
         .fallback(leptos_axum::file_and_error_handler(shell))
         .with_state(leptos_options);
 
+    log!("sqlite connection pool initialized");
     log!("listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app.into_make_service()).await?;
@@ -38,6 +41,7 @@ fn main() {}
 enum ServerStartError {
     Config(ConfigError),
     Io(std::io::Error),
+    Sqlx(sqlx::Error),
 }
 
 #[cfg(feature = "ssr")]
@@ -46,6 +50,7 @@ impl std::fmt::Display for ServerStartError {
         match self {
             Self::Config(source) => write!(f, "{source}"),
             Self::Io(source) => write!(f, "{source}"),
+            Self::Sqlx(source) => write!(f, "{source}"),
         }
     }
 }
@@ -64,5 +69,12 @@ impl From<ConfigError> for ServerStartError {
 impl From<std::io::Error> for ServerStartError {
     fn from(source: std::io::Error) -> Self {
         Self::Io(source)
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl From<sqlx::Error> for ServerStartError {
+    fn from(source: sqlx::Error) -> Self {
+        Self::Sqlx(source)
     }
 }
