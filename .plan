@@ -1,0 +1,114 @@
+# Architecture Plan
+
+## Repository Shape
+
+Use a single Cargo workspace package configured for `cargo-leptos`, with one shared library crate and one server binary:
+
+- `Cargo.toml`
+  - `leptos`, `leptos_axum`, `axum`, `tokio`, `serde`, `thiserror`, `dotenvy`
+  - later add `sqlx` with `sqlite`, `runtime-tokio`, `migrate`
+  - `[lib] crate-type = ["cdylib", "rlib"]`
+  - `[package.metadata.leptos]` for SSR + hydrate builds
+- `src/lib.rs`
+  - shared app entrypoint and module exports
+- `src/main.rs`
+  - SSR server bootstrap, env loading, pool init, migrations, Axum router
+- `src/app.rs`
+  - root Leptos app shell, router, layout
+- `src/components/`
+  - `todo_input.rs`
+  - `todo_list.rs`
+  - `todo_item.rs`
+  - `todo_footer.rs`
+- `src/server/`
+  - `mod.rs`
+  - `state.rs` for `AppState` / SQLite pool
+  - `functions.rs` for `#[server]` functions
+  - `errors.rs` for app/server error mapping
+- `src/db/`
+  - `mod.rs`
+  - `todos.rs` for SQLx data access
+- `src/domain/`
+  - `mod.rs`
+  - `todo.rs` for shared `Todo` and filter types
+- `migrations/`
+  - `0001_init.sql`
+- `style/`
+  - vendored TodoMVC CSS
+- `assets/`
+  - TodoMVC common assets, screenshot(s)
+- `.env.example`
+- `Dockerfile`
+- `docker-compose.yml`
+
+## Shared Types
+
+- `Todo`
+  - fields: `id: i64`, `title: String`, `completed: bool`, `position: i64`
+  - optionally include `created_at` / `updated_at` on the server side if they are needed in UI or docs; otherwise keep them DB-only
+  - derives: `Serialize`, `Deserialize`, `Clone`, `Debug`, `PartialEq`, `Eq`
+- `FilterMode`
+  - enum: `All`, `Active`, `Completed`
+  - used by router-derived UI state and filtered rendering
+- `AppState`
+  - holds `SqlitePool` and Leptos options needed by Axum integration
+- `AppError`
+  - unified error type for db, validation, and server-function failures
+
+## Key Design Decisions
+
+- Keep domain types shared from `src/domain` so server functions and client rendering use the same `Todo` model.
+- Keep SQLx row handling isolated in `src/db/todos.rs`; server functions should delegate instead of embedding SQL.
+- Treat title trimming and empty-title rejection as server-side invariants, even if the client pre-validates.
+- Use route-derived `FilterMode` instead of duplicating filter state in local component state.
+- Prefer one source of truth for todo data via a Leptos resource/server functions; mutations should revalidate/refetch instead of manually patching multiple local caches.
+- Run `sqlx::migrate!()` during server startup so Docker/local/dev behave the same.
+- Store ordering with `position` from the start even if initial UI does not reorder, because the schema already requires it and it prevents later migration churn.
+- Keep UI behavior aligned to TodoMVC semantics first, then add nicer feedback in Issue 20 without changing core interactions.
+
+## Issue Dependencies
+
+Normalized implementation order:
+
+1. Issue 1: initialize Cargo + cargo-leptos config
+2. Issue 2: env loading and `.env.example`
+3. Issue 3: minimal Axum + Leptos server boot
+4. Issue 5: add SQLx + SQLite pool/migration tooling
+5. Issue 6: `todos` migration and startup migration execution
+6. Issue 8: shared `Todo` type
+7. Issue 7: data access layer
+8. Issue 9: `get_todos` and `add_todo`
+9. Issue 10: update/delete/toggle/clear server functions
+10. Issue 11: vendor TodoMVC CSS and base shell
+11. Issue 12: `TodoInput`
+12. Issue 13: `TodoList` + `TodoItem`
+13. Issue 14: edit mode behavior
+14. Issue 15: footer, counts, filters, clear completed
+15. Issue 16: toggle-all
+16. Issue 17: `leptos_router` filter routes
+17. Issue 18: apply route filter to rendered list
+18. Issue 19: spec conformance pass
+19. Issue 20: error handling and non-blocking feedback
+20. Issue 4: Dockerfile + compose, after local app flow works
+21. Issue 21: README, screenshots, final run instructions
+
+Notes on ambiguous backlog references:
+
+- `Task 1`, `Issue 1.1`, `Issue 2.1`, `Issue 3.1`, `Issue 4.3`, `Task 5`, `Issue 6.1`, and `Issue 6.2` appear to describe milestone groupings rather than literal GitHub issue numbers.
+- The sequence above resolves those labels to the nearest technical prerequisite so each future session can proceed without reinterpretation.
+
+## Per-Issue Implementation Targets
+
+- Issues 1-3 establish the runnable SSR baseline.
+- Issues 5-10 establish persistence, domain model, and server API.
+- Issues 11-18 build the TodoMVC UI and route-based filtering.
+- Issue 19 is a behavior audit against the TodoMVC spec.
+- Issue 20 adds user-facing resilience around already-correct behavior.
+- Issues 4 and 21 are packaging/documentation tasks best done after the app is functionally complete locally.
+
+## Risks To Watch
+
+- `cargo leptos` metadata is easy to misconfigure; issue 1 should settle package/output names early to avoid later Docker and env churn.
+- `#[server]` function signatures should use shared domain types from the start, or later UI issues will force refactors.
+- Route state and footer active-link state should be derived from the router, not duplicated, or Issues 15/17/18 will conflict.
+- Error handling should avoid optimistic UI mutations unless rollback behavior is explicit.
