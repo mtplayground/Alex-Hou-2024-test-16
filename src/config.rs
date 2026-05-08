@@ -4,6 +4,9 @@ use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use leptos::config::Env;
+use leptos::prelude::LeptosOptions;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppEnv {
     pub database_url: String,
@@ -28,6 +31,17 @@ impl AppEnv {
             site_root: PathBuf::from(required_var("LEPTOS_SITE_ROOT")?),
             output_name: required_var("LEPTOS_OUTPUT_NAME")?,
         })
+    }
+
+    pub fn leptos_options(&self) -> LeptosOptions {
+        LeptosOptions::builder()
+            .output_name(self.output_name.clone())
+            .site_root(self.site_root.to_string_lossy().into_owned())
+            .site_pkg_dir("pkg")
+            .env(Env::DEV)
+            .site_addr(self.site_addr)
+            .reload_port(3001)
+            .build()
     }
 }
 
