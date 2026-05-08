@@ -2,7 +2,7 @@
 use alex_hou_2024_test_16::{
     app::{shell, App},
     config::{AppEnv, ConfigError},
-    db::init_sqlite_pool,
+    db::{init_sqlite_pool, run_migrations},
 };
 
 #[cfg(feature = "ssr")]
@@ -16,6 +16,7 @@ async fn main() -> Result<(), ServerStartError> {
     let leptos_options = config.leptos_options();
     let addr = leptos_options.site_addr;
     let _pool = init_sqlite_pool(&config.database_url).await?;
+    run_migrations(&_pool).await?;
     let routes = generate_route_list(App);
 
     let app = Router::new()
@@ -27,6 +28,7 @@ async fn main() -> Result<(), ServerStartError> {
         .with_state(leptos_options);
 
     log!("sqlite connection pool initialized");
+    log!("sqlx migrations applied");
     log!("listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app.into_make_service()).await?;
@@ -41,6 +43,7 @@ fn main() {}
 enum ServerStartError {
     Config(ConfigError),
     Io(std::io::Error),
+    Migrate(sqlx::migrate::MigrateError),
     Sqlx(sqlx::Error),
 }
 
@@ -50,6 +53,7 @@ impl std::fmt::Display for ServerStartError {
         match self {
             Self::Config(source) => write!(f, "{source}"),
             Self::Io(source) => write!(f, "{source}"),
+            Self::Migrate(source) => write!(f, "{source}"),
             Self::Sqlx(source) => write!(f, "{source}"),
         }
     }
@@ -76,5 +80,12 @@ impl From<std::io::Error> for ServerStartError {
 impl From<sqlx::Error> for ServerStartError {
     fn from(source: sqlx::Error) -> Self {
         Self::Sqlx(source)
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl From<sqlx::migrate::MigrateError> for ServerStartError {
+    fn from(source: sqlx::migrate::MigrateError) -> Self {
+        Self::Migrate(source)
     }
 }
